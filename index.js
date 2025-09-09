@@ -1,63 +1,45 @@
-const fs = require("fs-extra");
-const login = require("ws3-fca");
-const path = require("path");
-
+const login = require("ws3-fca"); // apna FCA bhi rakh sakte ho
+const { loadCommands } = require("./handler/commandHandler");
+const { loadEvents } = require("./handler/eventHandler");
 const config = require("./config.json");
+const appState = require("./appstate.json");
 
-// Command collection
-const commands = new Map();
-const commandPath = path.join(__dirname, "commands");
+const commands = loadCommands(__dirname + "/commands");
+const events = loadEvents(__dirname + "/events");
 
-// Load all command files
-fs.readdirSync(commandPath).forEach(file => {
-  if (file.endsWith(".js")) {
-    const command = require(path.join(commandPath, file));
-    commands.set(command.name, command);
-  }
-});
-
-login({ appState: require("./appstate.json") }, (err, api) => {
+login({ appState }, (err, api) => {
   if (err) return console.error(err);
 
   api.setOptions({ listenEvents: true, selfListen: false });
-  console.log("✅ Bot is now running...");
+  console.log("🤖 Messenger Bot Started!");
+
+  // 🔹 Thread-specific data (nickname lock, gclock, etc.)
+  let threadData = {};
 
   api.listenMqtt(async (err, event) => {
     if (err) return console.error(err);
 
-    // Message event
-    if (event.type === "message" && event.body) {
-      const prefix = config.prefix;
-      const body = event.body.trim();
+    // ===== COMMAND HANDLER =====
+    if (event.type === "message" && event.body && event.body.startsWith(config.prefix)) {
+      const args = event.body.slice(config.prefix.length).trim().split(/ +/);
+      const cmdName = args.shift().toLowerCase();
 
-      if (!body.startsWith(prefix)) return;
-
-      const args = body.slice(prefix.length).split(" ");
-      const cmd = args.shift().toLowerCase();
-
-      if (commands.has(cmd)) {
+      if (commands.has(cmdName)) {
         try {
-          await commands.get(cmd).run({ api, event, args, config });
+          await commands.get(cmdName).run({ api, event, args, threadData });
         } catch (e) {
           console.error(e);
-          api.sendMessage("❌ Error running command.", event.threadID, event.messageID);
+          api.sendMessage("❌ Error executing command.", event.threadID);
         }
       }
     }
 
-    // Title change lock
-    if (event.logMessageType === "log:thread-name") {
-      const lockedName = config.gclock[event.threadID];
-      if (lockedName) {
-        api.setTitle(lockedName, event.threadID);
-      }
-    }
-
-    // Nickname change lock
-    if (event.logMessageType === "log:user-nickname") {
-      const lockedNick = config.nicklock[event.threadID];
-      if (lockedNick) {
-        api.changeNickname(lockedNick, event.threadID, event.author);
+    // ===== EVENT HANDLER =====
+    if (events.has(event.type)) {
+      try {
+        await events.get(event.type).run({ api, event, threadData });
+      } catch (e) {
+        console.error(e);
       }
     }
   });
