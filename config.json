@@ -1,7 +1,8 @@
 {
   "prefix": "/",
-  "owner": "61578840237242",
-  "gclock": {},
-  "nicklock": {},
-  "autoReplyStickers": true
+  "admins": ["1000XXXXXXXXXX"],
+  "botName": "AnuragBot",
+  "autoWelcome": true,
+  "lockNickname": false,
+  "lockGroupName": false
 }
